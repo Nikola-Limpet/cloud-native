@@ -5,146 +5,138 @@ const app = express();
 
 // Configure AWS
 AWS.config.update({
-  region: 'us-east-1'  // e.g., 'us-east-1'
+  region: 'us-east-1'
 });
 
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
-const TABLE_NAME = 'Employees';
+const TABLE_NAME = 'Students';
 
-// middleware
+// Middleware
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(express.static('public'));
 app.use(morgan('dev'));
 
-// routes
-app.get('/', (req, res) => {
-  res.status(200).json({ msg: 'msg' });
-});
+// 1. DB Connect Code (Already implemented in AWS config)
 
-// Register employee
-app.post('/api/reg', async (req, res) => {
-  const body = req.body;
-  
+// 2. Student Schema (DynamoDB is schemaless, but we'll define our data structure)
+/*
+Student {
+  sid: string (partition key),
+  sname: string,
+  semail: string,
+  spass: string
+}
+*/
+
+// 3. Student Registration
+app.post('/register', async (req, res) => {
+  const { sid, sname, semail, spass } = req.body;
+
   const params = {
     TableName: TABLE_NAME,
     Item: {
-      empid: body.empid,
-      name: body.name,
-      emailid: body.emailid,
-      pass: body.pass,
-      salary: body.salary
+      sid,
+      sname,
+      semail,
+      spass
     }
   };
 
   try {
     await dynamoDB.put(params).promise();
-    res.status(201).json({ msg: 'Employee registered' });
+    res.status(201).json({ message: 'Student registered successfully' });
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ msg: 'Server error' });
+    console.error('Registration Error:', error);
+    res.status(500).json({ message: 'Registration failed' });
   }
 });
 
-// View all employees
-app.get('/api/view', async (req, res) => {
+// 4. Student Login
+app.post('/login', async (req, res) => {
+  const { sid, spass } = req.body;
+
   const params = {
-    TableName: TABLE_NAME
+    TableName: TABLE_NAME,
+    Key: { sid }
   };
 
   try {
-    const data = await dynamoDB.scan(params).promise();
-    res.status(200).json({ employees: data.Items });
+    const data = await dynamoDB.get(params).promise();
+    if (!data.Item || data.Item.spass !== spass) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    res.json({ message: 'Login successful', student: data.Item });
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ msg: 'Server error' });
+    console.error('Login Error:', error);
+    res.status(500).json({ message: 'Login failed' });
   }
 });
 
-// Get employee by id
-app.get('/api/employee/:id', async (req, res) => {
-  const id = req.params.id;
-  
+// 5. Student Search
+app.get('/search/:sid', async (req, res) => {
+  const { sid } = req.params;
+
   const params = {
     TableName: TABLE_NAME,
-    Key: {
-      empid: id
-    }
+    Key: { sid }
   };
 
   try {
     const data = await dynamoDB.get(params).promise();
     if (!data.Item) {
-      return res.status(404).json({ msg: 'Employee not found' });
+      return res.status(404).json({ message: 'Student not found' });
     }
-    res.status(200).json({ employee: data.Item });
+    res.json(data.Item);
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ msg: 'Server error' });
+    console.error('Search Error:', error);
+    res.status(500).json({ message: 'Search failed' });
   }
 });
 
-// Update employee
-app.put('/api/employee/:id', async (req, res) => {
-  const id = req.params.id;
-  const body = req.body;
+// 6. Student Profile Update
+app.put('/update/:sid', async (req, res) => {
+  const { sid } = req.params;
+  const { sname, semail, spass } = req.body;
 
   const params = {
     TableName: TABLE_NAME,
-    Key: {
-      empid: id
-    },
-    UpdateExpression: 'set #name = :name, emailid = :emailid, pass = :pass, salary = :salary',
-    ExpressionAttributeNames: {
-      '#name': 'name' // 'name' is a reserved word in DynamoDB
-    },
+    Key: { sid },
+    UpdateExpression: 'set sname = :sname, semail = :semail, spass = :spass',
     ExpressionAttributeValues: {
-      ':name': body.name,
-      ':emailid': body.emailid,
-      ':pass': body.pass,
-      ':salary': body.salary
+      ':sname': sname,
+      ':semail': semail,
+      ':spass': spass
     },
     ReturnValues: 'UPDATED_NEW'
   };
 
   try {
     const data = await dynamoDB.update(params).promise();
-    if (!data.Attributes) {
-      return res.status(404).json({ msg: 'Employee not found!' });
-    }
-    res.status(200).json({ msg: 'Employee updated' });
+    res.json({ message: 'Profile updated', updates: data.Attributes });
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ msg: 'Server error' });
+    console.error('Update Error:', error);
+    res.status(500).json({ message: 'Update failed' });
   }
 });
 
-// Delete employee
-app.delete('/api/employee/:id', async (req, res) => {
-  const id = req.params.id;
-  
+// 7. Delete Student
+app.delete('/delete/:sid', async (req, res) => {
+  const { sid } = req.params;
+
   const params = {
     TableName: TABLE_NAME,
-    Key: {
-      empid: id
-    },
-    ReturnValues: 'ALL_OLD'
+    Key: { sid }
   };
 
   try {
-    const data = await dynamoDB.delete(params).promise();
-    if (!data.Attributes) {
-      return res.status(404).json({ msg: 'Employee not found' });
-    }
-    res.status(200).json({ msg: 'Employee deleted' });
+    await dynamoDB.delete(params).promise();
+    res.json({ message: 'Student deleted successfully' });
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ msg: 'Server error' });
+    console.error('Delete Error:', error);
+    res.status(500).json({ message: 'Deletion failed' });
   }
 });
 
 const PORT = 80;
-
 app.listen(PORT, () => {
-  console.log(`server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

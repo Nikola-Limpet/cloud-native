@@ -74,7 +74,7 @@ app.delete('/delete/:id', (req, res) => {
     res.json({ message: 'User deleted successfully' });
 });
 
-const PORT = 3000;
+const PORT = 80;
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
